@@ -58,23 +58,40 @@ static void applyModePreset(int mode){
 
 // Turbo
 static bool turboActive=false; static unsigned long turboEndMs=0; static bool turboM1=false, turboM2=false;
+static bool turboStopping=false;  // flag to complete current rotation before stopping
+
 static void startTurbo(bool m1,bool m2,unsigned long minutes){
-  turboM1=m1; turboM2=m2; turboActive=true;
+  turboM1=m1; turboM2=m2; turboActive=true; turboStopping=false;
   turboEndMs=millis()+minutes*60UL*1000UL;
   long span=6L*STEPS_PER_REV*minutes;
   if (turboM1) s1.move(s1.distanceToGo()+span);
   if (turboM2) s2.move(s2.distanceToGo()+span);
 }
+
 static void updateTurbo(){
   if (!turboActive) return;
-  if (millis()>=turboEndMs){
-    turboActive=false; turboM1=turboM2=false;
-    if (s1.distanceToGo()!=0) s1.stop();
-    if (s2.distanceToGo()!=0) s2.stop();
-  } else {
-    if (turboM1 && s1.distanceToGo()==0) s1.move(2L*STEPS_PER_REV);
-    if (turboM2 && s2.distanceToGo()==0) s2.move(2L*STEPS_PER_REV);
+  
+  // Check if time has expired
+  if (millis()>=turboEndMs && !turboStopping){
+    turboStopping=true;  // Enter stopping phase - complete current rotations
   }
+  
+  // If stopping, check if both motors have completed their current rotation
+  if (turboStopping){
+    bool m1Done = !turboM1 || (s1.distanceToGo()==0);
+    bool m2Done = !turboM2 || (s2.distanceToGo()==0);
+    
+    if (m1Done && m2Done){
+      // Both motors finished their rotations, fully stop turbo mode
+      turboActive=false; turboM1=turboM2=false; turboStopping=false;
+    }
+    // Don't queue new rotations while stopping
+    return;
+  }
+  
+  // Normal operation - queue next rotation if motor completed current one
+  if (turboM1 && s1.distanceToGo()==0) s1.move(2L*STEPS_PER_REV);
+  if (turboM2 && s2.distanceToGo()==0) s2.move(2L*STEPS_PER_REV);
 }
 
 // ===================== Wi-Fi / Web =====================
